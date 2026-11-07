@@ -1,4 +1,4 @@
-# Every push that changes fonts/ gets a build number: fonts/version.json (hash and size of every file, what changed), the tag fonts-<N> and a release with the changes.
+# Every push that changes a font (fonts/*.ttf) gets a build number: fonts/version.json (a short hash per font) and the tag fonts-<N>, whose message names the fonts that changed.
 # jsDelivr serves a tag unchanged for ever (cdn.jsdelivr.net/gh/qtng/cdn@fonts-<N>/fonts/...), so a font address with the tag never needs a purge.
 name: version
 on:
@@ -16,26 +16,19 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: version.json
-        id: v
-        run: |
-          set +e
-          build=$(python3 .github/scripts/make_version.py --notes "$RUNNER_TEMP/notes.md"); code=$?
-          set -e
-          if [ $code -eq 3 ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
-          [ $code -eq 0 ] || exit $code
-          echo "changed=true" >> "$GITHUB_OUTPUT"; echo "build=$build" >> "$GITHUB_OUTPUT"
-      - name: commit, tag, release
-        if: steps.v.outputs.changed == 'true'
+      - name: version.json, tag
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD: ${{ steps.v.outputs.build }}
         run: |
+          set +e
+          out=$(python3 .github/scripts/make_version.py); code=$?
+          set -e
+          [ $code -eq 3 ] && { echo "no font changed"; exit 0; }
+          [ $code -eq 0 ] || exit $code
+          build=${out%% *}; names=${out#* }
           git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add fonts/version.json
-          git commit -m "Fonts: build $BUILD (version.json)"
-          git tag "fonts-$BUILD"
-          git push origin HEAD:main "fonts-$BUILD"
-          gh release create "fonts-$BUILD" --title "Fonts, build $BUILD" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+          git commit -m "Fonts: build $build ($names)"
+          git tag -a "fonts-$build" -m "Fonts, build $build: $names"
+          git push origin HEAD:main "fonts-$build"
           gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" || true   # a push with the token starts no workflow: ask Pages for a build
