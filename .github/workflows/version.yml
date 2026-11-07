@@ -1,0 +1,41 @@
+# Every push that changes fonts/ gets a build number: fonts/version.json (hash and size of every file, what changed), the tag fonts-<N> and a release with the changes.
+# jsDelivr serves a tag unchanged for ever (cdn.jsdelivr.net/gh/qtng/cdn@fonts-<N>/fonts/...), so a font address with the tag never needs a purge.
+name: version
+on:
+  push:
+    branches: [main]
+    paths: ['fonts/**', '.github/scripts/make_version.py']
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+concurrency: version
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: version.json
+        id: v
+        run: |
+          set +e
+          build=$(python3 .github/scripts/make_version.py --notes "$RUNNER_TEMP/notes.md"); code=$?
+          set -e
+          if [ $code -eq 3 ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          [ $code -eq 0 ] || exit $code
+          echo "changed=true" >> "$GITHUB_OUTPUT"; echo "build=$build" >> "$GITHUB_OUTPUT"
+      - name: commit, tag, release
+        if: steps.v.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ steps.v.outputs.build }}
+        run: |
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add fonts/version.json
+          git commit -m "Fonts: build $BUILD (version.json)"
+          git tag "fonts-$BUILD"
+          git push origin HEAD:main "fonts-$BUILD"
+          gh release create "fonts-$BUILD" --title "Fonts, build $BUILD" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+          gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" || true   # a push with the token starts no workflow: ask Pages for a build
