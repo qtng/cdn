@@ -1,4 +1,4 @@
-# Every push that changes a font (fonts/*.ttf) gets a build number: fonts/version.json (a short hash per font) and the tag fonts-<N>, whose message names the fonts that changed.
+# Every push that changes a font (fonts/*.ttf) gets a build number: fonts/version.json (the date of the last change per font) and the tag fonts-<N>, whose message names the fonts that changed.
 # jsDelivr serves a tag unchanged for ever (cdn.jsdelivr.net/gh/qtng/cdn@fonts-<N>/fonts/...), so a font address with the tag never needs a purge.
 name: version
 on:
@@ -16,6 +16,7 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # the dates of the fonts come from the history
       - name: version.json, tag
         env:
           GH_TOKEN: ${{ github.token }}
